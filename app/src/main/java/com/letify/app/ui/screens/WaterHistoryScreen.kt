@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -80,10 +81,19 @@ fun WaterHistoryScreen(onBack: () -> Unit) {
 
     var expandedDay by remember { mutableStateOf<String?>(null) }
 
-    Box(Modifier.fillMaxWidth().background(Letify.colors.bg)) {
+    // BUG FIX (critical, reported): this screen was the only settings-style
+    // screen still sized with `fillMaxWidth()` only — no height at all — while
+    // every sibling (BindingsScreen, NotificationsScreen, AppearanceScreen...)
+    // uses `fillMaxSize()`. Without a height, this composable's own
+    // Letify.colors.bg background wasn't guaranteed to stretch all the way to
+    // the top of the window, so the raw (black) Activity window background
+    // showed through behind the transparent status bar on THIS screen only —
+    // "status bar isn't transparent like everywhere else". fillMaxSize() on
+    // both the outer Box and the scrolling Column matches the working pattern.
+    Box(Modifier.fillMaxSize().background(Letify.colors.bg)) {
         Column(
             Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 24.dp),

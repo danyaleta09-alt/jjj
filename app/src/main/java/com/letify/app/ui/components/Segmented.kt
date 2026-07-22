@@ -48,11 +48,17 @@ fun SegmentedTabs(
         animationSpec = spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow),
         label = "segx",
     )
+    // r-compact-segtabs: the old pill was 44dp tall + 5dp padding on every
+    // side (~54dp total) and stretched the accent-soft fill the full width of
+    // the screen — next to a short two-word label that read as an oversized,
+    // "not quite right" slab (feedback: "крупная, стрёмная"). Shrunk to a slim
+    // 36dp track with tighter 3dp padding and a smaller label/icon so it reads
+    // as a light toggle instead of a heavy plate.
     Box(
         modifier
             .fillMaxWidth()
             .background(Letify.colors.container, RoundedCornerShape(999.dp))
-            .padding(5.dp)
+            .padding(3.dp)
             .onSizeChanged { size = it }
     ) {
         if (size != IntSize.Zero) {
@@ -60,7 +66,7 @@ fun SegmentedTabs(
                 Modifier
                     .offset(x = offsetX, y = 0.dp)
                     .width(itemWidthDp)
-                    .height(44.dp)
+                    .height(36.dp)
                     .background(Letify.colors.accentSoft, RoundedCornerShape(999.dp))
             )
         }
@@ -69,21 +75,21 @@ fun SegmentedTabs(
                 val active = item.key == selected
                 NoFeedbackButton(
                     onClick = { onSelect(item.key) },
-                    modifier = Modifier.weight(1f).height(44.dp)
+                    modifier = Modifier.weight(1f).height(36.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                         if (item.icon != null) {
                             SolarIcon(
                                 name = item.icon,
                                 tint = if (active) Letify.colors.accent else Letify.colors.muted,
-                                size = 18.dp,
+                                size = 15.dp,
                             )
-                            Box(Modifier.size(8.dp))
+                            Box(Modifier.size(6.dp))
                         }
                         Text(
                             item.title,
                             color = if (active) Letify.colors.accent else Letify.colors.muted,
-                            style = Letify.typography.titleSmall,
+                            style = Letify.typography.bodySmall,
                         )
                     }
                 }

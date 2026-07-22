@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 156
-        versionName = "r156-home-revert"
+        versionCode = 158
+        versionName = "r158-history-statusbar-fix"
         vectorDrawables { useSupportLibrary = true }
     }
 
