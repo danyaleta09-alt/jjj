@@ -7,6 +7,7 @@ import com.letify.app.ui.state.Habit
 import com.letify.app.ui.state.SleepEntry
 import com.letify.app.ui.state.Subtask
 import com.letify.app.ui.state.TaskItem
+import com.letify.app.ui.state.WaterEntry
 import com.letify.app.ui.state.WeightEntry
 
 /**
@@ -152,6 +153,29 @@ class LetifyDataStore(context: Context) {
             "${it.dateKey}$FIELD_SEP${it.fromMinutes}$FIELD_SEP${it.toMinutes}$FIELD_SEP${it.quality}"
         }
         prefs.edit().putString(KEY_SLEEP_LOG, raw).apply()
+    }
+
+    // ── Water log ─────────────────────────────────────────────────────
+    // Every logged intake, across all days (not just today) — the history
+    // screen groups these by dateKey for the daily list + chart. Fields:
+    // dateKey|ml|time|label|icon. label/icon come from a fixed set of app
+    // strings (no '|' or ';'), so the flat encoding is safe.
+    fun loadWaterLog(): List<WaterEntry> {
+        val raw = prefs.getString(KEY_WATER_LOG, null) ?: return emptyList()
+        return raw.split(RECORD_SEP).mapNotNull { token ->
+            if (token.isBlank()) return@mapNotNull null
+            val p = token.split(FIELD_SEP)
+            if (p.size != 5) return@mapNotNull null
+            val ml = p[1].toIntOrNull() ?: return@mapNotNull null
+            WaterEntry(ml = ml, time = p[2], label = p[3], icon = p[4], dateKey = p[0])
+        }
+    }
+
+    fun saveWaterLog(entries: List<WaterEntry>) {
+        val raw = entries.joinToString(RECORD_SEP) {
+            "${it.dateKey}$FIELD_SEP${it.ml}$FIELD_SEP${it.time}$FIELD_SEP${it.label}$FIELD_SEP${it.icon}"
+        }
+        prefs.edit().putString(KEY_WATER_LOG, raw).apply()
     }
 
     // ── Tasks (schedule) ──────────────────────────────────────────────
@@ -322,6 +346,7 @@ class LetifyDataStore(context: Context) {
         const val KEY_AGE = "user_age"
         const val KEY_GENDER = "user_gender"
         const val KEY_WATER_TARGET = "water_target"
+        const val KEY_WATER_LOG = "water_log"
         const val KEY_KCAL_TARGET = "kcal_target"
         const val KEY_DEFAULT_TAB = "default_tab"
     }

@@ -43,6 +43,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -50,9 +51,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.letify.app.telegram.TelegramAuth
 import com.letify.app.ui.components.PrimaryActionButton
 import com.letify.app.ui.components.SettingsHeader
@@ -113,13 +117,11 @@ fun BindingsScreen(onBack: () -> Unit) {
                         sessionToken = null
                         // Resolve profile photo URL asynchronously so the UI
                         // doesn't wait on a second HTTP round trip before
-                        // flipping into bound state. AppState.update is a
-                        // no-op if the user has already unbound in the
-                        // meantime.
-                        scope.launch {
-                            val photo = TelegramAuth.fetchProfilePhotoUrl(result.user.id)
-                            state.updateTelegramPhoto(photo)
-                        }
+                        // flipping into bound state. Runs on AppState's own
+                        // long-lived scope (not this screen's) so it isn't
+                        // cancelled if the user navigates away right after
+                        // binding, before the fetch has finished.
+                        state.fetchTelegramPhoto(result.user.id)
                         return@launch
                     }
                     is TelegramAuth.PollResult.NotFound -> {
@@ -166,6 +168,7 @@ fun BindingsScreen(onBack: () -> Unit) {
             TelegramHero(
                 bound = ui is BindingUi.Bound,
                 polling = ui is BindingUi.Polling,
+                photoUrl = state.telegramUser?.photoUrl,
             )
 
             Spacer(Modifier.height(18.dp))
@@ -212,12 +215,13 @@ private sealed interface BindingUi {
  * neighbouring layout doesn't shift when the plate animates).
  */
 @Composable
-private fun TelegramHero(bound: Boolean, polling: Boolean) {
+private fun TelegramHero(bound: Boolean, polling: Boolean, photoUrl: String? = null) {
     // Plate scales to 120 * 0.86 ≈ 103dp; ring at 128dp gives a ~12.5dp
     // halo around the shrunken plate — the "чуть совсем больше” gap.
     val frameSize = 140.dp
     val plateRest = 120.dp
     val ringSize = 128.dp
+    val context = LocalContext.current
     val plateScale by animateFloatAsState(
         targetValue = if (polling) 0.86f else 1f,
         animationSpec = tween(durationMillis = 320, easing = EaseInOutCubic),
@@ -247,7 +251,9 @@ private fun TelegramHero(bound: Boolean, polling: Boolean) {
             )
 
             // Plate. graphicsLayer scale so the gradient and glyph shrink
-            // as one unit, leaving the icon centred at all times.
+            // as one unit, leaving the icon centred at all times. Always
+            // painted first — it's the fallback while the real Telegram
+            // photo (below) is still loading, or when the user has none.
             Box(
                 Modifier
                     .size(plateRest)
@@ -271,6 +277,32 @@ private fun TelegramHero(bound: Boolean, polling: Boolean) {
                     tint = Color.White,
                     size = 72.dp,
                 )
+            }
+
+            // Once bound, the user's real Telegram profile photo crossfades
+            // in on top of the plate — previously this hero always kept
+            // showing the generic Telegram logo, so the avatar never
+            // appeared to have been fetched even after a successful bind.
+            if (bound && photoUrl != null) {
+                Box(
+                    Modifier
+                        .size(plateRest)
+                        .graphicsLayer {
+                            scaleX = plateScale
+                            scaleY = plateScale
+                        }
+                        .clip(CircleShape),
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(photoUrl)
+                            .crossfade(260)
+                            .build(),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                }
             }
 
             if (bound) {

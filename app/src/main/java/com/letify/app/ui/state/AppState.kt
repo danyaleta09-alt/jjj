@@ -19,6 +19,10 @@ import com.letify.app.ui.theme.ThemeMode
 import com.letify.app.ui.theme.LetifyColors
 import java.time.DayOfWeek
 import java.time.LocalDate
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 enum class Tab(val key: String) { Home("home"), Nutrition("nutrition"), Plan("plan"), Profile("profile") }
 
@@ -92,7 +96,13 @@ fun scheduleTextFor(days: Set<Int>): String {
 
 // ── Other entities ────────────────────────────────────────────────────────
 
-data class WaterEntry(val ml: Int, val time: String, val label: String, val icon: String)
+data class WaterEntry(
+    val ml: Int,
+    val time: String,
+    val label: String,
+    val icon: String,
+    val dateKey: String = Dates.todayKey(),
+)
 
 data class Meal(val name: String, val title: String, val icon: String, val color: Color, val kcal: Int?, val description: String?)
 
@@ -320,12 +330,32 @@ class AppState(
     var telegramUser by mutableStateOf(bindingStore?.load())
         private set
 
+    // Long-lived scope for background work that must survive the caller's
+    // screen being popped — e.g. the Telegram profile-photo fetch below.
+    // AppState itself lives for the whole Activity (created once in
+    // rememberAppState), so this outlives any single screen's own
+    // rememberCoroutineScope, which used to get cancelled if the user
+    // backed out of "Привязки" right after binding, before the second
+    // network round-trip for the photo had finished — the avatar would
+    // then never actually get set even though the bind itself succeeded.
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     fun bindTelegram(user: TelegramAuth.TelegramUser) {
         telegramUser = user
         bindingStore?.save(user)
         val tgName = user.displayName.trim()
         if (tgName.isNotEmpty()) {
             userName = tgName
+        }
+    }
+
+    /** Resolve and store the bound user's Telegram profile photo. Runs on
+     *  [appScope] so it completes even if the caller (the bindings screen)
+     *  is no longer on screen by the time the two HTTP round-trips finish. */
+    fun fetchTelegramPhoto(userId: Long) {
+        appScope.launch {
+            val photo = TelegramAuth.fetchProfilePhotoUrl(userId)
+            updateTelegramPhoto(photo)
         }
     }
 
@@ -375,18 +405,57 @@ class AppState(
     var contentScrolling by mutableStateOf(false)
 
     // Water
-    var waterMl by mutableStateOf(1750)
+    //
+    // The balance shown on the day's ring is NOT its own stored counter — it's
+    // derived from [waterHistory], filtered to today's dateKey. That's what
+    // makes the balance start at 0 on a fresh install and reset to 0 every
+    // day automatically: once the wall-clock date rolls over, "today" simply
+    // has no entries yet, with no separate reset step to forget to run.
+    // Every entry ever logged stays in the log (across days) so the history
+    // screen can show real day-by-day stats and a chart.
+    val waterHistory: SnapshotStateList<WaterEntry> = mutableStateListOf<WaterEntry>().apply {
+        dataStore?.loadWaterLog()?.let { addAll(it) }
+    }
+
+    /** Today's total, in мл — what the ring on the water screen fills to. */
+    val waterMl: Int get() = waterHistory.filter { it.dateKey == Dates.todayKey() }.sumOf { it.ml }
+
     // Daily water goal (мл) — persisted so it survives a relaunch. Previously a
     // plain in-memory state, which is why a changed goal reset on restart.
     private val _waterTarget = mutableStateOf(dataStore?.loadWaterTarget(2500) ?: 2500)
     var waterTarget: Int
         get() = _waterTarget.value
         set(v) { _waterTarget.value = v; dataStore?.saveWaterTarget(v) }
-    val waterHistory: SnapshotStateList<WaterEntry> = mutableStateListOf(
-        WaterEntry(350, "12:40", "Стакан воды", "cup-paper-bold-duotone"),
-        WaterEntry(500, "10:15", "Бутылка", "bottle-bold-duotone"),
-        WaterEntry(250, "08:02", "Утро", "waterdrop-outline"),
-    )
+
+    /** Log a water intake for right now (today). Persists immediately. */
+    fun addWater(ml: Int, label: String, icon: String) {
+        val t = java.time.LocalTime.now()
+        val time = "%02d:%02d".format(t.hour, t.minute)
+        waterHistory.add(0, WaterEntry(ml, time, label, icon, Dates.todayKey()))
+        dataStore?.saveWaterLog(waterHistory.toList())
+    }
+
+    /** Remove a single logged entry (e.g. undo a mistaken tap) and persist. */
+    fun removeWaterEntry(entry: WaterEntry) {
+        if (waterHistory.remove(entry)) dataStore?.saveWaterLog(waterHistory.toList())
+    }
+
+    /** All entries for one day, most-recent-first (history screen's day detail). */
+    fun waterEntriesOn(dateKey: String): List<WaterEntry> =
+        waterHistory.filter { it.dateKey == dateKey }
+
+    /**
+     * Totals per day for the last [days] days (oldest → newest), including
+     * days with 0 мл, so the history chart always shows a full, even axis.
+     */
+    fun waterDailyTotals(days: Int): List<Pair<String, Int>> {
+        val today = LocalDate.now()
+        val totals = waterHistory.groupBy { it.dateKey }.mapValues { (_, v) -> v.sumOf { it.ml } }
+        return (days - 1 downTo 0).map { offset ->
+            val key = today.minusDays(offset.toLong()).toString()
+            key to (totals[key] ?: 0)
+        }
+    }
 
     // Nutrition / calories
     var kcal by mutableStateOf(1420)

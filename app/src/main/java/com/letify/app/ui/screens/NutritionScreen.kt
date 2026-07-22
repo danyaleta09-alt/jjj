@@ -42,13 +42,13 @@ import com.letify.app.ui.components.StackedRing
 import com.letify.app.ui.components.WCard
 import com.letify.app.ui.components.screenHPad
 import com.letify.app.ui.icons.SolarIcon
+import com.letify.app.ui.components.noFeedbackClick
 import com.letify.app.ui.state.LocalAppState
-import com.letify.app.ui.state.WaterEntry
 import com.letify.app.ui.theme.Letify
 import com.letify.app.ui.theme.LetifyColors
 
 @Composable
-fun NutritionScreen(onAddMeal: () -> Unit = {}) {
+fun NutritionScreen(onAddMeal: () -> Unit = {}, onWaterHistory: () -> Unit = {}) {
     var tab by remember { mutableStateOf("water") }
 
     ScreenScaffold(
@@ -83,13 +83,13 @@ fun NutritionScreen(onAddMeal: () -> Unit = {}) {
             },
             label = "nutrition_pane"
         ) { current ->
-            if (current == "water") WaterPane() else FoodPane(onAddMeal = onAddMeal)
+            if (current == "water") WaterPane(onHistory = onWaterHistory) else FoodPane(onAddMeal = onAddMeal)
         }
     }
 }
 
 @Composable
-private fun WaterPane() {
+private fun WaterPane(onHistory: () -> Unit = {}) {
     val state = LocalAppState.current
     Column {
         // Big water ring lives directly on the page — no container plate.
@@ -119,8 +119,7 @@ private fun WaterPane() {
                             // Don't cap at the goal — let the counter exceed the
                             // target so over-drinking is reflected truthfully and
                             // matches what gets logged in the history.
-                            state.waterMl = state.waterMl + ml
-                            state.waterHistory.add(0, WaterEntry(ml, nowHm(), labelFor(ml), icon))
+                            state.addWater(ml, labelFor(ml), icon)
                         }
                     }
                     if (row.size == 1) Box(Modifier.weight(1f))
@@ -128,24 +127,26 @@ private fun WaterPane() {
             }
         }
         SectionTitle("История")
-        WCard(modifier = Modifier.screenHPad(), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)) {
-            if (state.waterHistory.isEmpty()) {
-                EmptyHint("Сегодня ещё ничего не выпито — добавь первый стакан выше")
-            } else {
-                Column {
-                    state.waterHistory.forEach { e ->
-                        HistoryRow(e)
-                    }
+        WCard(
+            modifier = Modifier.screenHPad().noFeedbackClick(onClick = onHistory),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(38.dp).background(LetifyColors.Water.copy(alpha = 0.16f), RoundedCornerShape(12.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    SolarIcon(name = "calendar-bold-duotone", tint = LetifyColors.Water, size = 20.dp)
                 }
+                Box(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Вся история", color = Letify.colors.text, style = Letify.typography.titleSmall)
+                    Text("Записи по дням и статистика", color = Letify.colors.muted, style = Letify.typography.bodySmall)
+                }
+                SolarIcon(name = "alt-arrow-right-outline", tint = Letify.colors.muted, size = 18.dp)
             }
         }
     }
-}
-
-/** Current wall-clock time as "HH:mm" for water-history timestamps. */
-private fun nowHm(): String {
-    val t = java.time.LocalTime.now()
-    return "%02d:%02d".format(t.hour, t.minute)
 }
 
 private fun labelFor(ml: Int): String = when {
@@ -170,27 +171,6 @@ private fun QuickAddButton(ml: Int, icon: String, modifier: Modifier = Modifier,
                 Text("+$ml мл", color = Letify.colors.text, style = Letify.typography.titleSmall)
             }
         }
-    }
-}
-
-@Composable
-private fun HistoryRow(e: WaterEntry) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier.size(38.dp).background(LetifyColors.Water.copy(alpha = 0.16f), RoundedCornerShape(12.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            SolarIcon(name = e.icon, tint = LetifyColors.Water, size = 20.dp)
-        }
-        Box(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(e.label, color = Letify.colors.text, style = Letify.typography.titleSmall)
-            Text("${e.time} · ${e.ml} мл", color = Letify.colors.muted, style = Letify.typography.bodySmall)
-        }
-        Text("+${e.ml}", color = Letify.colors.text, style = Letify.typography.titleSmall)
     }
 }
 
