@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -48,17 +49,11 @@ fun SegmentedTabs(
         animationSpec = spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow),
         label = "segx",
     )
-    // r-compact-segtabs: the old pill was 44dp tall + 5dp padding on every
-    // side (~54dp total) and stretched the accent-soft fill the full width of
-    // the screen — next to a short two-word label that read as an oversized,
-    // "not quite right" slab (feedback: "крупная, стрёмная"). Shrunk to a slim
-    // 36dp track with tighter 3dp padding and a smaller label/icon so it reads
-    // as a light toggle instead of a heavy plate.
     Box(
         modifier
             .fillMaxWidth()
             .background(Letify.colors.container, RoundedCornerShape(999.dp))
-            .padding(3.dp)
+            .padding(4.dp)
             .onSizeChanged { size = it }
     ) {
         if (size != IntSize.Zero) {
@@ -66,7 +61,7 @@ fun SegmentedTabs(
                 Modifier
                     .offset(x = offsetX, y = 0.dp)
                     .width(itemWidthDp)
-                    .height(36.dp)
+                    .height(34.dp)
                     .background(Letify.colors.accentSoft, RoundedCornerShape(999.dp))
             )
         }
@@ -75,7 +70,7 @@ fun SegmentedTabs(
                 val active = item.key == selected
                 NoFeedbackButton(
                     onClick = { onSelect(item.key) },
-                    modifier = Modifier.weight(1f).height(36.dp)
+                    modifier = Modifier.weight(1f).height(34.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                         if (item.icon != null) {
@@ -90,6 +85,7 @@ fun SegmentedTabs(
                             item.title,
                             color = if (active) Letify.colors.accent else Letify.colors.muted,
                             style = Letify.typography.bodySmall,
+                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
                         )
                     }
                 }

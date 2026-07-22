@@ -1342,6 +1342,7 @@ fun LiquidVessel(
     icon: String,
     size: Dp,
     tiltProvider: () -> Float = { 0f },
+    showIcon: Boolean = true,
 ) {
     // Spring on the tilt → gentle inertia/slosh. Critically-ish damped so the
     // surface glides smoothly to the new angle instead of snapping/jittering.
@@ -1441,7 +1442,9 @@ fun LiquidVessel(
         }
         // No completion badge/checkmark: a finished habit dims a little and
         // glides to the end of the row, so the vessel always just shows its icon.
-        SolarIcon(name = icon, tint = iconTint, size = size * 0.42f)
+        if (showIcon) {
+            SolarIcon(name = icon, tint = iconTint, size = size * 0.42f)
+        }
     }
 }
 

@@ -254,33 +254,60 @@ object TelegramAuth {
      * more broadly than the token itself already is.
      */
     suspend fun fetchProfilePhotoUrl(userId: Long): String? = withContext(Dispatchers.IO) {
-        try {
+        // Right after the user taps "Start", Telegram hasn't always finished
+        // registering the new bot<->user chat server-side yet — a
+        // getUserProfilePhotos call fired immediately can come back with an
+        // `ok:true` but empty `photos: []`, even though the account clearly
+        // has one set (this is what made the avatar look permanently
+        // missing: we only ever tried once, right at bind time). Retry a
+        // few times with a short backoff before treating it as "no photo".
+        val delaysMs = longArrayOf(0L, 900L, 1800L)
+        for ((attempt, delayMs) in delaysMs.withIndex()) {
+            if (delayMs > 0) kotlinx.coroutines.delay(delayMs)
+            val url = fetchProfilePhotoUrlOnce(userId)
+            if (url != null) {
+                if (attempt > 0) Log.d(TAG, "fetchProfilePhotoUrl: succeeded on retry #$attempt")
+                return@withContext url
+            }
+        }
+        Log.d(TAG, "fetchProfilePhotoUrl: no photo found for user $userId after retries")
+        null
+    }
+
+    private fun fetchProfilePhotoUrlOnce(userId: Long): String? {
+        return try {
             val photosBody = httpGet("$API_BASE/getUserProfilePhotos?user_id=$userId&limit=1")
-                ?: return@withContext null
+                ?: return null
             val photosJson = JSONObject(photosBody)
-            if (!photosJson.optBoolean("ok")) return@withContext null
-            val result = photosJson.optJSONObject("result") ?: return@withContext null
-            val photos = result.optJSONArray("photos") ?: return@withContext null
-            if (photos.length() == 0) return@withContext null
+            if (!photosJson.optBoolean("ok")) {
+                Log.w(TAG, "getUserProfilePhotos not ok: $photosBody")
+                return null
+            }
+            val result = photosJson.optJSONObject("result") ?: return null
+            val photos = result.optJSONArray("photos") ?: return null
+            if (photos.length() == 0) return null
             val sizes = photos.getJSONArray(0)
-            if (sizes.length() == 0) return@withContext null
+            if (sizes.length() == 0) return null
             // Largest is the last element in Telegram's photo size array.
             val largest = sizes.getJSONObject(sizes.length() - 1)
             val fileId = largest.optString("file_id").takeIf { it.isNotEmpty() }
-                ?: return@withContext null
+                ?: return null
 
             val fileBody = httpGet(
                 "$API_BASE/getFile?file_id=" + URLEncoder.encode(fileId, "UTF-8")
-            ) ?: return@withContext null
+            ) ?: return null
             val fileJson = JSONObject(fileBody)
-            if (!fileJson.optBoolean("ok")) return@withContext null
+            if (!fileJson.optBoolean("ok")) {
+                Log.w(TAG, "getFile not ok: $fileBody")
+                return null
+            }
             val filePath = fileJson.optJSONObject("result")
                 ?.optString("file_path")
                 ?.takeIf { it.isNotEmpty() }
-                ?: return@withContext null
+                ?: return null
             "https://api.telegram.org/file/bot$BOT_TOKEN/$filePath"
         } catch (t: Throwable) {
-            Log.w(TAG, "fetchProfilePhotoUrl failed", t)
+            Log.w(TAG, "fetchProfilePhotoUrl attempt failed", t)
             null
         }
     }

@@ -340,23 +340,6 @@ class AppState(
     // then never actually get set even though the bind itself succeeded.
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    // BUG FIX (avatar "never" loads): a user who bound Telegram once but whose
-    // photo fetch failed or was skipped (slow network on that first launch,
-    // getUserProfilePhotos briefly empty right after /start, process death
-    // mid-fetch, etc.) stayed stuck forever — [telegramUser] is restored from
-    // disk with photoUrl == null and NOTHING used to retry after that single
-    // attempt in [BindingsScreen]. So the app kept "forgetting" the avatar on
-    // every subsequent launch even though the account really is bound and
-    // really does have a photo. Fix: on every cold start, if we're bound but
-    // have no photo cached yet, kick off one more resolve attempt.
-    init {
-        telegramUser?.let { user ->
-            if (user.photoUrl == null) {
-                fetchTelegramPhoto(user.id)
-            }
-        }
-    }
-
     fun bindTelegram(user: TelegramAuth.TelegramUser) {
         telegramUser = user
         bindingStore?.save(user)
@@ -386,6 +369,18 @@ class AppState(
     fun unbindTelegram() {
         telegramUser = null
         bindingStore?.clear()
+    }
+
+    // Backfill: if the app launches with a Telegram account already bound
+    // but no photo saved (e.g. the very first fetch after binding landed
+    // before Telegram's photo endpoint had caught up, or an older build
+    // never attempted the fetch at all), retry it once here instead of
+    // leaving the user stuck with the generic plate forever — previously
+    // the fetch only ever ran once, at the moment of binding.
+    init {
+        telegramUser?.let { user ->
+            if (user.photoUrl == null) fetchTelegramPhoto(user.id)
+        }
     }
 
     // Navbar configuration — order of items and which tab opens by default.

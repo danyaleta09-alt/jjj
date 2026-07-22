@@ -1,9 +1,6 @@
 package com.letify.app.ui.screens
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -11,8 +8,6 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,30 +15,25 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.letify.app.ui.components.AmountSlider
 import com.letify.app.ui.components.NoFeedbackButton
+import com.letify.app.ui.components.PrimaryActionButton
 import com.letify.app.ui.components.ScreenHeader
 import com.letify.app.ui.components.ScreenScaffold
 import com.letify.app.ui.components.SectionTitle
@@ -57,7 +47,6 @@ import com.letify.app.ui.components.noFeedbackClick
 import com.letify.app.ui.state.LocalAppState
 import com.letify.app.ui.theme.Letify
 import com.letify.app.ui.theme.LetifyColors
-import kotlin.math.roundToInt
 
 @Composable
 fun NutritionScreen(onAddMeal: () -> Unit = {}, onWaterHistory: () -> Unit = {}) {
@@ -103,12 +92,10 @@ fun NutritionScreen(onAddMeal: () -> Unit = {}, onWaterHistory: () -> Unit = {})
 @Composable
 private fun WaterPane(onHistory: () -> Unit = {}) {
     val state = LocalAppState.current
-    val tiltProvider = rememberDeviceTilt()
     Column {
-        // Water level now reads as a filling vessel (per request: "как будто
-        // стакан, который наполняется") instead of a ring — reuses the same
-        // LiquidVessel already built and battle-tested for habits on «План»,
-        // just with the bottle icon and the water tint.
+        // Big water vessel lives directly on the page — no container plate.
+        // Liquid-fill glass instead of a ring, so the level actually reads
+        // as "water rising in a container" rather than an abstract arc.
         Box(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp), contentAlignment = Alignment.Center) {
             Box(Modifier.size(200.dp), contentAlignment = Alignment.Center) {
                 LiquidVessel(
@@ -116,24 +103,38 @@ private fun WaterPane(onHistory: () -> Unit = {}) {
                     color = LetifyColors.Water,
                     icon = "bottle-bold-duotone",
                     size = 200.dp,
-                    tiltProvider = tiltProvider,
+                    showIcon = false,
                 )
-            }
-        }
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(state.waterMl.toString(), color = Letify.colors.text, style = Letify.typography.displayLarge)
-                Text("из ${state.waterTarget} мл", color = Letify.colors.muted, style = Letify.typography.bodySmall)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    SolarIcon(name = "bottle-bold-duotone", tint = LetifyColors.Water, size = 22.dp)
+                    Box(Modifier.height(2.dp))
+                    Text(state.waterMl.toString(), color = Letify.colors.text, style = Letify.typography.displayLarge)
+                    Text("из ${state.waterTarget} мл", color = Letify.colors.muted, style = Letify.typography.bodySmall)
+                }
             }
         }
         SectionTitle("Добавить воду")
-        Box(Modifier.screenHPad()) {
-            WaterAmountPicker { ml ->
-                // Don't cap at the goal — let the counter exceed the target so
-                // over-drinking is reflected truthfully and matches what gets
-                // logged in the history.
-                state.addWater(ml, labelFor(ml), "bottle-bold-duotone")
-            }
+        var pickedMl by remember { mutableStateOf(250) }
+        Column(modifier = Modifier.screenHPad(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            AmountSlider(
+                valueMl = pickedMl,
+                onValueChange = { pickedMl = it },
+                maxMl = 1000,
+                stepMl = 50,
+                accentColor = LetifyColors.Water,
+            )
+            PrimaryActionButton(
+                label = "Добавить",
+                enabled = pickedMl > 0,
+                onClick = {
+                    if (pickedMl > 0) {
+                        // Don't cap at the goal — let the counter exceed the
+                        // target so over-drinking is reflected truthfully and
+                        // matches what gets logged in the history.
+                        state.addWater(pickedMl, labelFor(pickedMl), "bottle-bold-duotone")
+                    }
+                },
+            )
         }
         SectionTitle("История")
         WCard(
@@ -163,148 +164,6 @@ private fun labelFor(ml: Int): String = when {
     ml <= 400 -> "Стакан воды"
     ml <= 600 -> "Бутылка"
     else -> "Большая бутылка"
-}
-
-// Replaces the old 2x2 quick-add button grid: drag the pimple (пимпочка) to
-// dial in an amount, see it called out in the bubble above the thumb, then
-// tap «Добавить» to log it — one adjustable control instead of four fixed
-// presets. Range/step tuned for a single glass/bottle-sized pour; repeat
-// taps of «Добавить» cover anything bigger.
-private const val WaterPickerMinMl = 50
-private const val WaterPickerMaxMl = 750
-private const val WaterPickerStepMl = 25
-
-@Composable
-private fun WaterAmountPicker(onAdd: (Int) -> Unit) {
-    val density = LocalDensity.current
-    var trackSize by remember { mutableStateOf(IntSize.Zero) }
-    var amountMl by remember { mutableStateOf(250) }
-    val thumbDp = 32.dp
-    val thumbPx = with(density) { thumbDp.toPx() }
-
-    fun updateFromX(x: Float) {
-        val usablePx = (trackSize.width - thumbPx).coerceAtLeast(1f)
-        val f = ((x - thumbPx / 2f) / usablePx).coerceIn(0f, 1f)
-        val raw = WaterPickerMinMl + f * (WaterPickerMaxMl - WaterPickerMinMl)
-        amountMl = (raw / WaterPickerStepMl).roundToInt() * WaterPickerStepMl
-    }
-
-    val fraction = (amountMl - WaterPickerMinMl).toFloat() / (WaterPickerMaxMl - WaterPickerMinMl)
-    val usablePx = (trackSize.width - thumbPx).coerceAtLeast(1f)
-    val thumbCenterPx = thumbPx / 2f + fraction.coerceIn(0f, 1f) * usablePx
-    val thumbOffsetDp by animateDpAsState(
-        targetValue = with(density) { (thumbCenterPx - thumbPx / 2f).toDp() },
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow),
-        label = "waterThumb",
-    )
-
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        var bubbleWidthPx by remember { mutableFloatStateOf(0f) }
-        val bubbleXDp by animateDpAsState(
-            targetValue = with(density) {
-                (thumbCenterPx - bubbleWidthPx / 2f)
-                    .coerceIn(0f, (trackSize.width - bubbleWidthPx).coerceAtLeast(0f))
-                    .toDp()
-            },
-            animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow),
-            label = "waterBubbleX",
-        )
-        Box(Modifier.fillMaxWidth().height(52.dp)) {
-            if (trackSize != IntSize.Zero) {
-                Box(
-                    Modifier
-                        .offset(x = bubbleXDp, y = 0.dp)
-                        .onSizeChanged { bubbleWidthPx = it.width.toFloat() },
-                ) {
-                    WaterAmountBubble(amountMl)
-                }
-            }
-        }
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .background(Letify.colors.container, RoundedCornerShape(999.dp))
-                .onSizeChanged { trackSize = it }
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Main)
-                        updateFromX(down.position.x)
-                        down.consume()
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Main)
-                            val change = event.changes.firstOrNull() ?: break
-                            if (!change.pressed) break
-                            updateFromX(change.position.x)
-                            change.consume()
-                        }
-                    }
-                },
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            if (trackSize != IntSize.Zero) {
-                // Filled portion — rounded on both ends like the reference, so
-                // it reads as its own little pill riding inside the track
-                // rather than a hard-edged progress bar.
-                Box(
-                    Modifier
-                        .padding(horizontal = 4.dp)
-                        .height(40.dp)
-                        .width(with(density) { thumbCenterPx.toDp() })
-                        .background(LetifyColors.Water, RoundedCornerShape(999.dp)),
-                )
-                Box(
-                    Modifier
-                        .offset(x = thumbOffsetDp)
-                        .size(thumbDp)
-                        .background(Color.White, RoundedCornerShape(999.dp)),
-                )
-            }
-        }
-        Box(Modifier.height(14.dp))
-        NoFeedbackButton(
-            onClick = { onAdd(amountMl) },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .background(LetifyColors.Water, RoundedCornerShape(18.dp))
-                    .padding(vertical = 15.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("Добавить", color = Color.White, style = Letify.typography.titleSmall)
-            }
-        }
-    }
-}
-
-@Composable
-private fun WaterAmountBubble(amountMl: Int) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            Modifier
-                .background(LetifyColors.Water, RoundedCornerShape(16.dp))
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SolarIcon(name = "waterdrop-outline", tint = Color.White, size = 16.dp)
-                Box(Modifier.width(6.dp))
-                Text("$amountMl мл", color = Color.White, style = Letify.typography.titleSmall)
-            }
-        }
-        // Small triangular tail — a 45°-rotated square clipped square, pulled
-        // up under the bubble so it reads as one continuous speech-bubble
-        // shape pointing straight down at the thumb.
-        Box(
-            Modifier
-                .offset(y = (-5).dp)
-                .size(10.dp)
-                .graphicsLayer { rotationZ = 45f }
-                .clip(RoundedCornerShape(2.dp))
-                .background(LetifyColors.Water),
-        )
-    }
 }
 
 @Composable
